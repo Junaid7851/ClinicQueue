@@ -1,10 +1,9 @@
 <!DOCTYPE html>
-
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ClinicQueue — Real-Time Doctor Token & Wait-Time Tracker</title>
+  <title>CarePlus Polyclinic — Live Token & Wait-Time Tracker</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
@@ -27,35 +26,30 @@
 <body class="text-slate-800 antialiased min-h-screen flex flex-col">
 
   <!-- Top Navigation Bar -->
-
   <header class="bg-white border-b border-slate-200 sticky top-0 z-30">
     <div class="max-w-5xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
+      <!-- Brand -->
       <a href="?" onclick="navigateToRoot(event)" class="flex items-center gap-2.5 group">
         <div class="w-9 h-9 rounded-xl bg-teal-600 text-white flex items-center justify-center font-bold text-lg shadow-sm group-hover:bg-teal-700 transition">
           +
         </div>
         <div>
-          <span class="font-bold text-slate-900 text-base sm:text-lg tracking-tight">ClinicQueue</span>
-          <span class="hidden sm:inline-block text-xs text-slate-400 ml-2 font-medium">Live Real-Time Sync</span>
+          <span class="font-bold text-slate-900 text-base sm:text-lg tracking-tight">CarePlus</span>
+          <span class="hidden sm:inline-block text-xs text-slate-400 ml-2 font-medium">Live Queue Tracker</span>
         </div>
       </a>
+
+      <!-- Right Action Controls -->
       <div id="navRightControls" class="flex items-center gap-2"></div>
     </div>
   </header>
 
   <!-- Main Content Container -->
-
   <main class="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 py-6 sm:py-8">
-    <div id="appRoot">
-      <div class="flex flex-col items-center justify-center py-20 text-center">
-        <div class="w-10 h-10 border-4 border-teal-600 border-t-transparent rounded-full animate-spin"></div>
-        <p class="text-sm font-semibold text-slate-600 mt-4">Connecting to Firebase Real-Time Database...</p>
-      </div>
-    </div>
+    <div id="appRoot"></div>
   </main>
 
   <!-- Toast Notification -->
-
   <div id="toast" class="fixed bottom-5 right-5 z-50 transform translate-y-20 opacity-0 transition-all duration-300 pointer-events-none">
     <div class="bg-slate-900 text-white text-sm font-medium px-4 py-3 rounded-xl shadow-lg flex items-center gap-2.5">
       <span id="toastIcon" class="text-teal-400 font-bold">✓</span>
@@ -63,37 +57,18 @@
     </div>
   </div>
 
-  <!-- Firebase SDKs -->
-
-  <script type="module">
-   import { initializeApp } from "https://www.gstatic.com/firebasejs/13.3.0/firebase-app.js";
-  import { getAnalytics } from "https://www.gstatic.com/firebasejs/13.3.0/firebase-analytics.js";
-
-
+  <script>
     // =========================================================
-    // FIREBASE CONFIGURATION (REPLACE WITH YOUR PROJECT DETAILS)
+    // 1. DEFAULT DATA & STORAGE INITIALIZATION
     // =========================================================
-    const firebaseConfig = {
-      apiKey: "AIzaSyDUEzFe0K-3RUAHMgbKmXc1YvdzSyVU9_E",
-    authDomain: "clinicqueue-8c079.firebaseapp.com",
-    projectId: "clinicqueue-8c079",
-    storageBucket: "clinicqueue-8c079.firebasestorage.app",
-    messagingSenderId: "792700690553",
-    appId: "1:792700690553:web:769d5c12376a6a6aab34a8",
-    measurementId: "G-PGX0BL4QLE"
-    };
-
-
-    // Initialize Firebase
-    onst app = initializeApp(firebaseConfig);
-  const analytics = getAnalytics(app);
-
-
-    const STATE_DOC_REF = doc(db, "clinics", "main_queue_state");
-
+    const STORAGE_KEY = 'careplus_clinicqueue_state_v3';
+    const SESSION_KEY = 'careplus_clinicqueue_session_v3';
 
     const DEFAULT_STATE = {
-      admin: { username: 'admin', password: 'admin123' },
+      admin: {
+        username: 'admin',
+        password: 'admin123'
+      },
       doctors: [
         {
           id: 'sharma',
@@ -105,9 +80,9 @@
           avgMins: 10,
           currentToken: 6,
           totalTokens: 18,
-          status: 'open',
+          status: 'open', // 'open' | 'break' | 'closed'
           breakDelayMins: 0,
-          sessionStartedAt: Date.now() - (48 * 60000),
+          sessionStartedAt: Date.now() - (48 * 60000), // Demo: 5 patients seen -> live pace
           pausedAt: null,
           totalPausedMs: 0
         },
@@ -123,142 +98,177 @@
           totalTokens: 14,
           status: 'open',
           breakDelayMins: 0,
-          sessionStartedAt: Date.now() - (16 * 60000),
+          sessionStartedAt: Date.now() - (16 * 60000), // Demo: 2 patients seen -> standard pace
           pausedAt: null,
+          totalPausedMs: 0
+        },
+        {
+          id: 'mohanty',
+          name: 'Dr. R. K. Mohanty',
+          specialty: 'Orthopedic Surgeon',
+          room: 'Room 204',
+          username: 'mohanty',
+          password: 'clinic123',
+          avgMins: 12,
+          currentToken: 4,
+          totalTokens: 15,
+          status: 'break',
+          breakDelayMins: 15,
+          sessionStartedAt: Date.now() - (45 * 60000),
+          pausedAt: Date.now() - (5 * 60000),
           totalPausedMs: 0
         }
       ]
     };
 
-
-    window.appState = null;
-    window.currentView = 'auto';
-    window.lookupTokenNumber = '';
-    window.editingDoctorId = null;
-
-
-    // Save state to Firestore
-    window.saveState = async function(newState) {
+    function loadState() {
       try {
-        await setDoc(STATE_DOC_REF, newState);
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) {
+          saveState(DEFAULT_STATE);
+          return JSON.parse(JSON.stringify(DEFAULT_STATE));
+        }
+        return JSON.parse(raw);
       } catch (e) {
-        console.error("Error saving state to Firestore:", e);
-        showToast("Error syncing with cloud database", true);
+        return JSON.parse(JSON.stringify(DEFAULT_STATE));
       }
-    };
+    }
 
+    function saveState(state) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    }
 
-    // Authentication session storage
-    const SESSION_KEY = 'clinicqueue_auth_session_v2';
-    window.getAuthSession = function() {
+    function getAuthSession() {
       try {
         const raw = sessionStorage.getItem(SESSION_KEY);
         return raw ? JSON.parse(raw) : null;
       } catch (e) {
         return null;
       }
-    };
+    }
 
-
-    window.setAuthSession = function(session) {
+    function setAuthSession(session) {
       if (!session) {
         sessionStorage.removeItem(SESSION_KEY);
       } else {
         sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
       }
-    };
+    }
 
+    let appState = loadState();
+    let currentView = 'auto'; // 'auto' | 'login' | 'dashboard'
+    let lookupTokenNumber = '';
+    let editingDoctorId = null;
 
     // =========================================================
-    // HYBRID DYNAMIC WAIT-TIME LOGIC
+    // 2. HYBRID DYNAMIC WAIT-TIME LOGIC
     // =========================================================
     const WARMUP_PATIENT_COUNT = 5;
 
-
-    window.getEffectiveAvgInfo = function(doctor) {
+    function getEffectiveAvgInfo(doctor) {
       const patientsSeen = Math.max(0, (doctor.currentToken || 0) - 1);
+
+      // Phase 1: First 4-5 patients (< 5 completed) -> use configured baseline
       if (patientsSeen < WARMUP_PATIENT_COUNT || !doctor.sessionStartedAt) {
-        return { effectiveMins: Number(doctor.avgMins) || 10, mode: 'standard', patientsSeen };
+        return {
+          effectiveMins: Number(doctor.avgMins) || 10,
+          mode: 'standard',
+          patientsSeen,
+          activeElapsedMins: 0
+        };
       }
-      const currentPauseMs = (doctor.status === 'break' && doctor.pausedAt) ? (Date.now() - doctor.pausedAt) : 0;
+
+      // Phase 2: After 5 patients -> total active session time / total patients seen
+      const currentPauseMs = (doctor.status === 'break' && doctor.pausedAt)
+        ? (Date.now() - doctor.pausedAt)
+        : 0;
       const totalPaused = (doctor.totalPausedMs || 0) + currentPauseMs;
       const activeElapsedMs = Math.max(60000, Date.now() - doctor.sessionStartedAt - totalPaused);
       const activeElapsedMins = activeElapsedMs / 60000;
+
       const rawCalculated = activeElapsedMins / patientsSeen;
       const clamped = Math.max(2, Math.min(45, Math.round(rawCalculated * 10) / 10));
-      return { effectiveMins: clamped, mode: 'live', patientsSeen };
-    };
 
+      return {
+        effectiveMins: clamped,
+        mode: 'live',
+        patientsSeen,
+        activeElapsedMins: Math.round(activeElapsedMins)
+      };
+    }
 
-    window.calculateWaitForToken = function(doctor, targetToken) {
+    function calculateWaitForToken(doctor, targetToken) {
       const current = doctor.currentToken || 0;
-      if (targetToken < current) return { state: 'passed', waitMins: 0, etaString: 'Already called' };
-      if (targetToken === current) return { state: 'serving', waitMins: 0, etaString: 'Now in cabin' };
-
+      if (targetToken < current) {
+        return { state: 'passed', waitMins: 0, etaString: 'Already called' };
+      }
+      if (targetToken === current) {
+        return { state: 'serving', waitMins: 0, etaString: 'Now in cabin' };
+      }
 
       const { effectiveMins } = getEffectiveAvgInfo(doctor);
       const tokensAhead = targetToken - current;
       const breakBuffer = doctor.status === 'break' ? (Number(doctor.breakDelayMins) || 0) : 0;
       const waitMins = Math.round(tokensAhead * effectiveMins + breakBuffer);
+
       const etaDate = new Date(Date.now() + waitMins * 60000);
       const etaString = etaDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-
       return { state: 'waiting', tokensAhead, waitMins, etaString };
-    };
-
+    }
 
     // =========================================================
-    // URL ROUTING HELPERS
+    // 3. URL & ROUTING HELPERS
     // =========================================================
-    window.getDoctorIdFromUrl = function() {
+    function getDoctorIdFromUrl() {
       const params = new URLSearchParams(window.location.search);
       if (params.get('doctor')) return params.get('doctor').trim().toLowerCase();
-      const match = (window.location.hash || '').match(/#\/doctor\/([a-zA-Z0-9_-]+)/);
+
+      const hash = window.location.hash || '';
+      const match = hash.match(/#\/doctor\/([a-zA-Z0-9_-]+)/);
       if (match) return match[1].toLowerCase();
+
       return null;
-    };
+    }
 
-
-    window.getDoctorShareUrl = function(doctorId) {
+    function getDoctorShareUrl(doctorId) {
       const url = new URL(window.location.href);
       url.search = `?doctor=${encodeURIComponent(doctorId)}`;
       url.hash = '';
       return url.toString();
-    };
+    }
 
-
-    window.navigateToDoctor = function(doctorId) {
+    function navigateToDoctor(doctorId) {
       const url = new URL(window.location.href);
       url.search = `?doctor=${encodeURIComponent(doctorId)}`;
       url.hash = '';
       window.history.pushState({}, '', url);
-      window.currentView = 'auto';
-      window.lookupTokenNumber = '';
+      currentView = 'auto';
+      lookupTokenNumber = '';
       render();
-    };
+    }
 
-
-    window.navigateToRoot = function(e) {
+    function navigateToRoot(e) {
       if (e) e.preventDefault();
       const url = new URL(window.location.href);
       url.search = '';
       url.hash = '';
       window.history.pushState({}, '', url);
-      window.currentView = 'auto';
-      window.lookupTokenNumber = '';
+      currentView = 'auto';
+      lookupTokenNumber = '';
       render();
-    };
+    }
 
-
-    window.addEventListener('popstate', () => { window.currentView = 'auto'; render(); });
-
+    window.addEventListener('popstate', () => {
+      currentView = 'auto';
+      render();
+    });
 
     // =========================================================
-    // UI UTILITIES & TOAST
+    // 4. UI UTILITIES
     // =========================================================
     let toastTimer = null;
-    window.showToast = function(message, isError = false) {
+    function showToast(message, isError = false) {
       const toast = document.getElementById('toast');
       const icon = document.getElementById('toastIcon');
       const msg = document.getElementById('toastMessage');
@@ -267,18 +277,18 @@
       msg.textContent = message;
       toast.classList.remove('translate-y-20', 'opacity-0');
       clearTimeout(toastTimer);
-      toastTimer = setTimeout(() => toast.classList.add('translate-y-20', 'opacity-0'), 2800);
-    };
+      toastTimer = setTimeout(() => {
+        toast.classList.add('translate-y-20', 'opacity-0');
+      }, 2800);
+    }
 
-
-    window.copyText = function(text, successMsg = 'Copied to clipboard!') {
+    function copyText(text, successMsg = 'Copied to clipboard!') {
       if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(text).then(() => showToast(successMsg)).catch(() => fallbackCopy(text, successMsg));
       } else {
         fallbackCopy(text, successMsg);
       }
-    };
-
+    }
 
     function fallbackCopy(text, successMsg) {
       const ta = document.createElement('textarea');
@@ -290,82 +300,146 @@
       showToast(successMsg);
     }
 
+    function escapeHtml(str) {
+      return String(str ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
 
-    window.escapeHtml = function(str) {
-      return String(str ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
-    };
-
-
-    window.getQrImageUrl = function(dataUrl) {
+    function getQrImageUrl(dataUrl) {
       return `https://api.qrserver.com/v1/create-qr-code/?size=200x200&margin=8&data=${encodeURIComponent(dataUrl)}`;
-    };
-
+    }
 
     // =========================================================
-    // RENDER CONTROLS & VIEWS
+    // 5. NAVIGATION BAR RENDERER
     // =========================================================
-    window.renderNav = function() {
+    function renderNav() {
       const nav = document.getElementById('navRightControls');
       const session = getAuthSession();
+
       if (session) {
-        const label = session.role === 'admin' ? 'Clinic Admin' : (appState.doctors.find(d => d.id === session.doctorId)?.name || 'Staff');
+        const label = session.role === 'admin'
+          ? 'Clinic Admin'
+          : (appState.doctors.find(d => d.id === session.doctorId)?.name || 'Staff');
+
         nav.innerHTML = `
-          <button onclick="openDashboard()" class="text-xs sm:text-sm font-semibold px-3 py-1.5 rounded-lg bg-teal-50 text-teal-700 border border-teal-200 hover:bg-teal-100 transition">${escapeHtml(label)} Panel</button>
-          <button onclick="handleLogout()" class="text-xs sm:text-sm font-medium px-3 py-1.5 rounded-lg text-slate-600 hover:bg-slate-100 border border-slate-200 transition">Log Out</button>
+          <button onclick="openDashboard()" class="text-xs sm:text-sm font-semibold px-3 py-1.5 rounded-lg bg-teal-50 text-teal-700 border border-teal-200 hover:bg-teal-100 transition">
+            ${escapeHtml(label)} Panel
+          </button>
+          <button onclick="handleLogout()" class="text-xs sm:text-sm font-medium px-3 py-1.5 rounded-lg text-slate-600 hover:bg-slate-100 border border-slate-200 transition">
+            Log Out
+          </button>
         `;
       } else {
-        nav.innerHTML = `<button onclick="openLogin()" class="text-xs sm:text-sm font-semibold px-3.5 py-2 rounded-xl bg-slate-900 text-white hover:bg-slate-800 transition shadow-sm">Staff / Admin Login</button>`;
+        nav.innerHTML = `
+          <button onclick="openLogin()" class="text-xs sm:text-sm font-semibold px-3.5 py-2 rounded-xl bg-slate-900 text-white hover:bg-slate-800 transition shadow-sm">
+            Staff / Admin Login
+          </button>
+        `;
       }
-    };
+    }
 
+    function openLogin() {
+      currentView = 'login';
+      render();
+    }
 
-    window.openLogin = function() { window.currentView = 'login'; render(); };
-    window.openDashboard = function() { window.currentView = 'dashboard'; render(); };
-    window.handleLogout = function() { setAuthSession(null); window.currentView = 'auto'; showToast('Logged out'); render(); };
+    function openDashboard() {
+      currentView = 'dashboard';
+      render();
+    }
 
+    function handleLogout() {
+      setAuthSession(null);
+      currentView = 'auto';
+      showToast('Logged out successfully');
+      render();
+    }
 
-    // --- Patient View ---
+    // =========================================================
+    // 6. VIEW A: PATIENT ISOLATED QUEUE VIEW (?doctor=<id>)
+    // =========================================================
     function renderPatientDoctorView(doctor) {
       const avgInfo = getEffectiveAvgInfo(doctor);
       const statusBadges = {
         open: `<span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200"><span class="w-2 h-2 rounded-full bg-emerald-500 pulse-dot"></span> Clinic Open</span>`,
-        break: `<span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200"><span class="w-2 h-2 rounded-full bg-amber-500"></span> On Break (+${doctor.breakDelayMins || 0}m)</span>`,
-        closed: `<span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200"><span class="w-2 h-2 rounded-full bg-rose-500"></span> Closed</span>`
+        break: `<span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200"><span class="w-2 h-2 rounded-full bg-amber-500"></span> On Break (+${doctor.breakDelayMins || 0}m delay)</span>`,
+        closed: `<span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-rose-50 text-rose-700 border border-rose-200"><span class="w-2 h-2 rounded-full bg-rose-500"></span> Session Closed</span>`
       };
 
-
       const paceLabel = avgInfo.mode === 'live'
-        ? `<span class="inline-flex items-center gap-1 text-xs font-medium text-teal-700 bg-teal-50 px-2.5 py-0.5 rounded-full border border-teal-200">⚡ Live Pace: ~${avgInfo.effectiveMins} min/pt</span>`
-        : `<span class="inline-flex items-center gap-1 text-xs font-medium text-slate-600 bg-slate-100 px-2.5 py-0.5 rounded-full">⏱ Standard Pace: ~${avgInfo.effectiveMins} min/pt</span>`;
+        ? `<span class="inline-flex items-center gap-1 text-xs font-medium text-teal-700 bg-teal-50 px-2.5 py-0.5 rounded-full border border-teal-200">⚡ Live Pace: ~${avgInfo.effectiveMins} min/patient (${avgInfo.patientsSeen} seen)</span>`
+        : `<span class="inline-flex items-center gap-1 text-xs font-medium text-slate-600 bg-slate-100 px-2.5 py-0.5 rounded-full">⏱ Standard Pace: ~${avgInfo.effectiveMins} min/patient</span>`;
 
+      let lookupHtml = '';
+      if (lookupTokenNumber !== '' && !isNaN(Number(lookupTokenNumber)) && Number(lookupTokenNumber) > 0) {
+        const tok = Number(lookupTokenNumber);
+        const res = calculateWaitForToken(doctor, tok);
+        if (res.state === 'passed') {
+          lookupHtml = `
+            <div class="mt-4 p-4 rounded-xl bg-slate-100 border border-slate-200 text-slate-700 text-sm">
+              Token <strong>#${tok}</strong> has already passed (Currently serving <strong>#${doctor.currentToken}</strong>). Please check with the reception desk.
+            </div>`;
+        } else if (res.state === 'serving') {
+          lookupHtml = `
+            <div class="mt-4 p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-sm font-medium">
+              🎉 Token <strong>#${tok}</strong> is <strong>NOW BEING SERVED</strong>! Please proceed to <strong>${escapeHtml(doctor.room)}</strong>.
+            </div>`;
+        } else {
+          lookupHtml = `
+            <div class="mt-4 p-4 rounded-xl bg-teal-50 border border-teal-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <div class="text-xs font-semibold uppercase tracking-wider text-teal-700">Token #${tok} Estimate</div>
+                <div class="text-lg font-bold text-slate-900">~${res.waitMins} mins wait <span class="text-sm font-normal text-slate-600">(${res.tokensAhead} ${res.tokensAhead === 1 ? 'patient' : 'patients'} ahead)</span></div>
+              </div>
+              <div class="sm:text-right">
+                <div class="text-xs text-slate-500">Approx. Turn Time</div>
+                <div class="text-base font-bold text-teal-700">${res.etaString}</div>
+              </div>
+            </div>`;
+        }
+      }
 
-      const lookupResultHtml = getLookupResultHtml(doctor);
       const startTok = Math.max(1, doctor.currentToken);
       const endTok = Math.max(startTok, doctor.totalTokens);
       let rowsHtml = '';
 
-
       if (doctor.status === 'closed') {
-        rowsHtml = `<tr><td colspan="4" class="px-4 py-8 text-center text-sm text-slate-500">Clinic session is currently closed.</td></tr>`;
+        rowsHtml = `<tr><td colspan="4" class="px-4 py-8 text-center text-sm text-slate-500">This clinic session is currently closed.</td></tr>`;
       } else if (endTok < startTok) {
-        rowsHtml = `<tr><td colspan="4" class="px-4 py-8 text-center text-sm text-slate-500">No active tokens in queue.</td></tr>`;
+        rowsHtml = `<tr><td colspan="4" class="px-4 py-8 text-center text-sm text-slate-500">No active tokens in queue yet.</td></tr>`;
       } else {
         for (let t = startTok; t <= endTok; t++) {
           const calc = calculateWaitForToken(doctor, t);
           const isCurrent = t === doctor.currentToken;
           rowsHtml += `
             <tr class="${isCurrent ? 'bg-teal-50/70 font-semibold' : 'hover:bg-slate-50'} border-b border-slate-100 last:border-0">
-              <td class="px-4 py-3 text-sm"><span class="inline-flex items-center justify-center w-9 h-7 rounded-lg ${isCurrent ? 'bg-teal-600 text-white font-bold' : 'bg-slate-100 text-slate-800 font-semibold'}">#${t}</span></td>
-              <td class="px-4 py-3 text-sm">${isCurrent ? '<span class="text-teal-700 font-semibold">Now Serving</span>' : `<span class="text-slate-600">${calc.tokensAhead} ahead</span>`}</td>
-              <td class="px-4 py-3 text-sm text-slate-700">${isCurrent ? '0 mins' : `~${calc.waitMins} mins`}</td>
-              <td class="px-4 py-3 text-sm font-semibold text-right ${isCurrent ? 'text-teal-700' : 'text-slate-900'}">${calc.etaString}</td>
+              <td class="px-4 py-3 text-sm">
+                <span class="inline-flex items-center justify-center w-9 h-7 rounded-lg ${isCurrent ? 'bg-teal-600 text-white font-bold' : 'bg-slate-100 text-slate-800 font-semibold'}">
+                  #${t}
+                </span>
+              </td>
+              <td class="px-4 py-3 text-sm">
+                ${isCurrent
+                  ? '<span class="text-teal-700 font-semibold">Now Serving</span>'
+                  : `<span class="text-slate-600">${calc.tokensAhead} ahead</span>`}
+              </td>
+              <td class="px-4 py-3 text-sm text-slate-700">
+                ${isCurrent ? '0 mins' : `~${calc.waitMins} mins`}
+              </td>
+              <td class="px-4 py-3 text-sm font-semibold text-right ${isCurrent ? 'text-teal-700' : 'text-slate-900'}">
+                ${calc.etaString}
+              </td>
             </tr>`;
         }
       }
 
-
       return `
         <div class="max-w-2xl mx-auto space-y-6">
+          <!-- Doctor Header Card -->
           <div class="bg-white rounded-2xl border border-slate-200 p-5 sm:p-6 shadow-sm">
             <div class="flex flex-wrap items-start justify-between gap-3">
               <div>
@@ -376,258 +450,731 @@
               <div>${statusBadges[doctor.status] || statusBadges.open}</div>
             </div>
 
-
+            <!-- Live Now Serving Box -->
             <div class="mt-6 bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl p-6 text-white flex flex-col sm:flex-row items-center justify-between gap-4">
               <div class="text-center sm:text-left">
                 <div class="text-xs uppercase tracking-widest text-teal-300 font-semibold">Now Serving Token</div>
-                <div class="text-5xl sm:text-6xl font-extrabold tracking-tight mt-1">#${doctor.currentToken > 0 ? doctor.currentToken : '—'}</div>
-                <div class="text-xs text-slate-300 mt-2">Total Issued: <strong class="text-white">${doctor.totalTokens}</strong></div>
+                <div class="text-5xl sm:text-6xl font-extrabold tracking-tight mt-1">
+                  #${doctor.currentToken > 0 ? doctor.currentToken : '—'}
+                </div>
+                <div class="text-xs text-slate-300 mt-2">
+                  Total Issued Today: <strong class="text-white">${doctor.totalTokens}</strong>
+                </div>
               </div>
               <div class="bg-white/10 backdrop-blur-sm rounded-xl p-4 text-center sm:text-right border border-white/10 w-full sm:w-auto">
                 <div class="text-xs text-slate-300">Consultation Pace</div>
                 <div class="text-2xl font-bold text-teal-300 mt-0.5">~${avgInfo.effectiveMins} mins</div>
-              </div>
-            </div>
-
-
-            <div class="mt-6 pt-5 border-t border-slate-100">
-              <label class="block text-sm font-semibold text-slate-800 mb-2">Check Your Token Wait Time</label>
-              <div class="flex gap-2">
-                <input id="tokenLookupInput" type="number" min="1" placeholder="Enter your token #" value="${escapeHtml(window.lookupTokenNumber)}" oninput="handleLookupInput(this.value)" class="flex-1 rounded-xl border border-slate-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
-                ${window.lookupTokenNumber ? `<button onclick="handleLookupInput('')" class="px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600">Clear</button>` : ''}
-              </div>
-              <div id="lookupResultContainer">${lookupResultHtml}</div>
-            </div>
-          </div>
-
-
-          <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-            <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">${paceLabel}</div>
-            <div class="overflow-x-auto"><table class="w-full text-left border-collapse"><thead><tr class="bg-slate-50 border-b border-slate-200 text-xs font-semibold uppercase tracking-wider text-slate-500"><th class="px-4 py-3">Token</th><th class="px-4 py-3">Position</th><th class="px-4 py-3">Est. Wait</th><th class="px-4 py-3 text-right">Time</th></tr></thead><tbody>${rowsHtml}</tbody></table></div>
-          </div>
-        </div>
-      `;
-    }
-
-
-    function getLookupResultHtml(doctor) {
-      if (window.lookupTokenNumber === '' || isNaN(Number(window.lookupTokenNumber)) || Number(window.lookupTokenNumber) <= 0) return '';
-      const tok = Number(window.lookupTokenNumber);
-      const res = calculateWaitForToken(doctor, tok);
-      if (res.state === 'passed') return `<div class="mt-4 p-4 rounded-xl bg-slate-100 text-slate-700 text-sm">Token <strong>#${tok}</strong> has already passed.</div>`;
-      if (res.state === 'serving') return `<div class="mt-4 p-4 rounded-xl bg-emerald-50 text-emerald-900 text-sm font-medium">🎉 Token <strong>#${tok}</strong> is <strong>NOW BEING SERVED</strong>!</div>`;
-      return `<div class="mt-4 p-4 rounded-xl bg-teal-50 text-teal-900 text-sm flex justify-between"><div>Token #${tok} Wait: <strong>~${res.waitMins}m</strong></div><div class="font-bold">${res.etaString}</div></div>`;
-    }
-
-
-    window.handleLookupInput = function(val) {
-      window.lookupTokenNumber = val;
-      const container = document.getElementById('lookupResultContainer');
-      const doc = window.appState.doctors.find(d => d.id === getDoctorIdFromUrl());
-      if (container && doc) container.innerHTML = getLookupResultHtml(doc);
-    };
-
-
-    // --- Root Portal ---
-    function renderRootPortal() {
-      const cards = window.appState.doctors.map(doc => `
-        <div class="bg-white rounded-2xl border border-slate-200 p-5 flex flex-col justify-between gap-4 shadow-sm">
-          <div>
-            <div class="flex justify-between"><span class="text-xs font-bold text-teal-600">${escapeHtml(doc.room)}</span><span class="text-xs px-2 py-0.5 rounded-full ${doc.status === 'open' ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}">${doc.status}</span></div>
-            <h3 class="font-bold text-slate-900 text-lg mt-1">${escapeHtml(doc.name)}</h3>
-            <p class="text-xs text-slate-500">${escapeHtml(doc.specialty)}</p>
-          </div>
-          <button onclick="navigateToDoctor('${escapeHtml(doc.id)}')" class="w-full bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold py-2.5 rounded-xl transition">Open Patient Queue</button>
-        </div>
-      `).join('');
-
-
-      return `<div class="max-w-3xl mx-auto space-y-6"><div class="bg-white rounded-2xl border border-slate-200 p-8 text-center"><h1 class="text-2xl font-extrabold text-slate-900">Patient Queue Portal</h1><p class="text-sm text-slate-600 mt-1">Select a doctor to view real-time token queues.</p></div><div class="grid grid-cols-1 sm:grid-cols-2 gap-4">${cards}</div></div>`;
-    }
-
-
-    // --- Login View ---
-    function renderLoginView() {
-      return `
-        <div class="max-w-md mx-auto bg-white rounded-2xl border border-slate-200 p-6 sm:p-8 shadow-sm">
-          <h1 class="text-xl font-extrabold text-slate-900 text-center mb-6">Staff & Admin Login</h1>
-          <form onsubmit="handleLoginSubmit(event)" class="space-y-4">
-            <div><label class="block text-xs font-semibold text-slate-600 mb-1">Username</label><input id="loginUser" type="text" required class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm" /></div>
-            <div><label class="block text-xs font-semibold text-slate-600 mb-1">Password</label><input id="loginPass" type="password" required class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm" /></div>
-            <button type="submit" class="w-full bg-teal-600 text-white font-semibold py-2.5 rounded-xl text-sm">Sign In</button>
-          </form>
-          <div class="mt-4 text-xs text-slate-500 text-center">Demo Staff: <strong>sharma</strong> / <strong>clinic123</strong><br>Admin: <strong>admin</strong> / <strong>admin123</strong></div>
-        </div>
-      `;
-    }
-
-
-    window.handleLoginSubmit = function(e) {
-      e.preventDefault();
-      const user = document.getElementById('loginUser').value.trim();
-      const pass = document.getElementById('loginPass').value;
-      if (user === window.appState.admin.username && pass === window.appState.admin.password) {
-        setAuthSession({ role: 'admin' });
-        window.currentView = 'dashboard';
-        showToast('Logged in as Admin');
-        render();
-        return;
-      }
-      const doc = window.appState.doctors.find(d => d.username === user && d.password === pass);
-      if (doc) {
-        setAuthSession({ role: 'doctor', doctorId: doc.id });
-        window.currentView = 'dashboard';
-        showToast(`Logged in for ${doc.name}`);
-        render();
-        return;
-      }
-      showToast('Invalid credentials', true);
-    };
-
-
-    // --- Receptionist Control Panel ---
-    function renderDoctorControlPanel(doctor) {
-      const shareUrl = getDoctorShareUrl(doctor.id);
-      const qrUrl = getQrImageUrl(shareUrl);
-      return `
-        <div class="max-w-3xl mx-auto space-y-6">
-          <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm flex justify-between items-center">
-            <div><h1 class="text-xl font-extrabold text-slate-900">${escapeHtml(doctor.name)}</h1><p class="text-xs text-slate-500">${escapeHtml(doctor.room)}</p></div>
-            <button onclick="navigateToDoctor('${escapeHtml(doctor.id)}')" class="px-3 py-2 bg-slate-100 rounded-xl text-xs font-semibold">Preview Patient View ↗</button>
-          </div>
-
-
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm flex flex-col justify-between">
-              <div>
-                <div class="text-xs font-bold text-slate-400 uppercase">Current Token</div>
-                <div class="text-6xl font-extrabold text-slate-900 my-4 text-center">#${doctor.currentToken}</div>
-              </div>
-              <div class="space-y-2.5">
-                <button onclick="advanceToken('${escapeHtml(doctor.id)}', 1)" class="w-full py-3.5 bg-teal-600 hover:bg-teal-700 text-white font-bold rounded-xl">+1 Next Patient</button>
-                <div class="grid grid-cols-2 gap-2">
-                  <button onclick="advanceToken('${escapeHtml(doctor.id)}', -1)" class="py-2.5 border rounded-xl text-xs font-semibold">-1 Previous</button>
-                  <button onclick="issueWalkInToken('${escapeHtml(doctor.id)}')" class="py-2.5 bg-slate-900 text-white rounded-xl text-xs font-semibold">+ Issue Token (#${doctor.totalTokens + 1})</button>
+                <div class="text-[11px] text-slate-300 mt-1">
+                  ${avgInfo.mode === 'live'
+                    ? `Live avg (${avgInfo.patientsSeen} seen)`
+                    : `Baseline (first ${WARMUP_PATIENT_COUNT} patients)`}
                 </div>
               </div>
             </div>
 
-
-            <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
-              <div class="text-xs font-bold uppercase text-slate-500">Status</div>
-              <div class="grid grid-cols-3 gap-2">
-                <button onclick="setDoctorStatus('${escapeHtml(doctor.id)}', 'open')" class="py-2 rounded-xl text-xs font-semibold ${doctor.status === 'open' ? 'bg-emerald-600 text-white' : 'bg-slate-100'}">Open</button>
-                <button onclick="setDoctorStatus('${escapeHtml(doctor.id)}', 'break')" class="py-2 rounded-xl text-xs font-semibold ${doctor.status === 'break' ? 'bg-amber-500 text-white' : 'bg-slate-100'}">Break</button>
-                <button onclick="setDoctorStatus('${escapeHtml(doctor.id)}', 'closed')" class="py-2 rounded-xl text-xs font-semibold ${doctor.status === 'closed' ? 'bg-rose-600 text-white' : 'bg-slate-100'}">Closed</button>
+            <!-- Check Your Token Calculator -->
+            <div class="mt-6 pt-5 border-t border-slate-100">
+              <label class="block text-sm font-semibold text-slate-800 mb-2">Check Your Token Wait Time</label>
+              <div class="flex gap-2">
+                <input
+                  type="number"
+                  min="1"
+                  placeholder="Enter your token # (e.g. 12)"
+                  value="${escapeHtml(lookupTokenNumber)}"
+                  oninput="handleLookupInput(this.value)"
+                  class="flex-1 rounded-xl border border-slate-300 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                />
+                ${lookupTokenNumber ? `<button onclick="handleLookupInput('')" class="px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50">Clear</button>` : ''}
               </div>
-              <button onclick="resetQueue('${escapeHtml(doctor.id)}')" class="w-full py-2 bg-rose-50 text-rose-600 rounded-xl text-xs font-semibold">Reset Queue</button>
+              ${lookupHtml}
             </div>
           </div>
 
-
-          <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm flex items-center gap-5">
-            <img src="${qrUrl}" class="w-24 h-24 border p-1 rounded-xl" />
-            <div>
-              <div class="text-xs font-bold text-teal-600">Patient QR Code Link</div>
-              <input type="text" readonly value="${escapeHtml(shareUrl)}" class="w-full text-xs bg-slate-50 border rounded-lg px-3 py-2 mt-2" />
-              <button onclick="copyText('${escapeHtml(shareUrl)}')" class="mt-2 px-3 py-1.5 bg-slate-900 text-white text-xs rounded-lg font-semibold">Copy Link</button>
+          <!-- Upcoming Schedule Table -->
+          <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <div class="px-5 py-4 border-b border-slate-100 flex flex-wrap items-center justify-between gap-2">
+              <h2 class="font-bold text-slate-900 text-base">Live Queue Schedule</h2>
+              ${paceLabel}
+            </div>
+            <div class="overflow-x-auto">
+              <table class="w-full text-left border-collapse">
+                <thead>
+                  <tr class="bg-slate-50 border-b border-slate-200 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                    <th class="px-4 py-3">Token</th>
+                    <th class="px-4 py-3">Queue Position</th>
+                    <th class="px-4 py-3">Est. Wait</th>
+                    <th class="px-4 py-3 text-right">Approx. Time</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${rowsHtml}
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
       `;
     }
 
+    function handleLookupInput(val) {
+      lookupTokenNumber = val;
+      render();
+    }
 
-    window.advanceToken = async function(doctorId, delta) {
-      const doc = window.appState.doctors.find(d => d.id === doctorId);
+    // =========================================================
+    // 7. VIEW B: ROOT PORTAL
+    // =========================================================
+    function renderRootPortal() {
+      const doctorCards = appState.doctors.map(doc => {
+        const shareUrl = getDoctorShareUrl(doc.id);
+        return `
+          <div class="bg-white rounded-2xl border border-slate-200 p-5 flex flex-col justify-between gap-4 shadow-sm hover:border-teal-300 transition">
+            <div>
+              <div class="flex items-center justify-between gap-2">
+                <span class="text-xs font-bold uppercase tracking-wider text-teal-600">${escapeHtml(doc.room)}</span>
+                <span class="text-xs font-medium px-2 py-0.5 rounded-full ${doc.status === 'open' ? 'bg-emerald-50 text-emerald-700' : doc.status === 'break' ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-600'}">
+                  ${doc.status === 'open' ? 'Open' : doc.status === 'break' ? 'On Break' : 'Closed'}
+                </span>
+              </div>
+              <h3 class="font-bold text-slate-900 text-lg mt-1">${escapeHtml(doc.name)}</h3>
+              <p class="text-xs text-slate-500">${escapeHtml(doc.specialty)}</p>
+              <div class="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-600">
+                <span>Now Serving: <strong class="text-slate-900">#${doc.currentToken}</strong></span>
+                <span>Total: <strong class="text-slate-900">${doc.totalTokens}</strong></span>
+              </div>
+            </div>
+            <div class="flex items-center gap-2">
+              <button onclick="navigateToDoctor('${escapeHtml(doc.id)}')" class="flex-1 bg-teal-600 hover:bg-teal-700 text-white text-xs font-semibold py-2.5 px-3 rounded-xl transition">
+                Open Patient Link
+              </button>
+              <button onclick="copyText('${escapeHtml(shareUrl)}', 'Copied ${escapeHtml(doc.name)} URL!')" class="px-3 py-2.5 rounded-xl border border-slate-200 hover:bg-slate-50 text-xs font-semibold text-slate-700" title="Copy Isolated URL">
+                Copy URL
+              </button>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      return `
+        <div class="max-w-3xl mx-auto space-y-6">
+          <div class="bg-white rounded-2xl border border-slate-200 p-6 sm:p-8 text-center shadow-sm">
+            <div class="w-12 h-12 rounded-2xl bg-teal-50 text-teal-600 flex items-center justify-center mx-auto text-2xl font-bold">
+              🏥
+            </div>
+            <h1 class="text-2xl font-extrabold text-slate-900 mt-3">Patient Queue Portal</h1>
+            <p class="text-sm text-slate-600 max-w-md mx-auto mt-1.5">
+              Each doctor has an isolated queue URL (<code class="text-xs bg-slate-100 px-1.5 py-0.5 rounded">?doctor=id</code>) so patients only view their own doctor's live token status.
+            </p>
+          </div>
+
+          <div>
+            <div class="flex items-center justify-between mb-3">
+              <h2 class="text-sm font-bold uppercase tracking-wider text-slate-500">Isolated Doctor Queue Links</h2>
+              <span class="text-xs text-slate-400">Scan QR or open link</span>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              ${doctorCards || '<div class="col-span-full text-center py-8 text-sm text-slate-500">No doctors configured yet. Log in as Admin to add doctors.</div>'}
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    // =========================================================
+    // 8. VIEW C: STAFF & ADMIN LOGIN
+    // =========================================================
+    function renderLoginView() {
+      const demoChips = appState.doctors.map(doc => `
+        <button type="button" onclick="fillLogin('${escapeHtml(doc.username)}', '${escapeHtml(doc.password)}')"
+          class="text-xs px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-teal-50 hover:text-teal-700 text-slate-700 font-medium border border-slate-200 transition">
+          ${escapeHtml(doc.name)} (${escapeHtml(doc.username)})
+        </button>
+      `).join('');
+
+      return `
+        <div class="max-w-md mx-auto">
+          <div class="bg-white rounded-2xl border border-slate-200 p-6 sm:p-8 shadow-sm">
+            <div class="text-center mb-6">
+              <h1 class="text-xl font-extrabold text-slate-900">Staff & Admin Login</h1>
+              <p class="text-xs text-slate-500 mt-1">Sign in to manage a doctor's queue or clinic settings</p>
+            </div>
+
+            <form onsubmit="handleLoginSubmit(event)" class="space-y-4">
+              <div>
+                <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1.5">Username</label>
+                <input id="loginUser" type="text" required autocomplete="username" placeholder="Enter username"
+                  class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
+              </div>
+              <div>
+                <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-1.5">Password</label>
+                <input id="loginPass" type="password" required autocomplete="current-password" placeholder="Enter password"
+                  class="w-full rounded-xl border border-slate-300 px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
+              </div>
+              <button type="submit" class="w-full bg-teal-600 hover:bg-teal-700 text-white font-semibold py-2.5 rounded-xl text-sm shadow-sm transition">
+                Sign In
+              </button>
+            </form>
+
+            <div class="mt-6 pt-5 border-t border-slate-100">
+              <div class="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-2">1-Click Demo Credentials</div>
+              <div class="flex flex-wrap gap-1.5">
+                <button type="button" onclick="fillLogin('${escapeHtml(appState.admin.username)}', '${escapeHtml(appState.admin.password)}')"
+                  class="text-xs px-2.5 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 font-semibold border border-amber-200 transition">
+                  🔑 Clinic Admin (${escapeHtml(appState.admin.username)})
+                </button>
+                ${demoChips}
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function fillLogin(user, pass) {
+      document.getElementById('loginUser').value = user;
+      document.getElementById('loginPass').value = pass;
+    }
+
+    function handleLoginSubmit(e) {
+      e.preventDefault();
+      const user = document.getElementById('loginUser').value.trim();
+      const pass = document.getElementById('loginPass').value;
+
+      if (user === appState.admin.username && pass === appState.admin.password) {
+        setAuthSession({ role: 'admin' });
+        currentView = 'dashboard';
+        showToast('Logged in as Clinic Admin');
+        render();
+        return;
+      }
+
+      const doctor = appState.doctors.find(d => d.username === user && d.password === pass);
+      if (doctor) {
+        setAuthSession({ role: 'doctor', doctorId: doctor.id });
+        currentView = 'dashboard';
+        showToast(`Logged in for ${doctor.name}`);
+        render();
+        return;
+      }
+
+      showToast('Invalid username or password', true);
+    }
+
+    // =========================================================
+    // 9. VIEW D: DOCTOR CONTROL PANEL
+    // =========================================================
+    function renderDoctorControlPanel(doctor) {
+      if (!doctor) {
+        return `<div class="text-center py-10 text-slate-500">Doctor profile not found. <button onclick="handleLogout()" class="text-teal-600 underline">Log out</button></div>`;
+      }
+
+      const avgInfo = getEffectiveAvgInfo(doctor);
+      const shareUrl = getDoctorShareUrl(doctor.id);
+      const qrUrl = getQrImageUrl(shareUrl);
+
+      return `
+        <div class="max-w-3xl mx-auto space-y-6">
+          <div class="bg-white rounded-2xl border border-slate-200 p-5 sm:p-6 shadow-sm flex flex-wrap items-center justify-between gap-4">
+            <div>
+              <span class="text-xs font-bold uppercase tracking-wider text-teal-600">${escapeHtml(doctor.room)} • Receptionist Control</span>
+              <h1 class="text-xl sm:text-2xl font-extrabold text-slate-900 mt-0.5">${escapeHtml(doctor.name)}</h1>
+              <p class="text-xs text-slate-500">${escapeHtml(doctor.specialty)}</p>
+            </div>
+            <div class="flex items-center gap-2">
+              <button onclick="navigateToDoctor('${escapeHtml(doctor.id)}')" class="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-semibold transition">
+                Preview Patient View ↗
+              </button>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm flex flex-col justify-between">
+              <div>
+                <div class="flex items-center justify-between">
+                  <span class="text-xs font-bold uppercase tracking-wider text-slate-400">Current Token</span>
+                  <span class="text-xs font-semibold px-2.5 py-0.5 rounded-full ${avgInfo.mode === 'live' ? 'bg-teal-50 text-teal-700' : 'bg-slate-100 text-slate-600'}">
+                    ${avgInfo.mode === 'live' ? `⚡ Live Avg: ${avgInfo.effectiveMins}m` : `Baseline: ${avgInfo.effectiveMins}m (${avgInfo.patientsSeen}/${WARMUP_PATIENT_COUNT} seen)`}
+                  </span>
+                </div>
+                <div class="text-6xl font-extrabold text-slate-900 my-4 text-center">
+                  #${doctor.currentToken}
+                </div>
+                <div class="text-center text-xs text-slate-500 mb-6">
+                  Total Issued: <strong>${doctor.totalTokens}</strong> • Remaining: <strong>${Math.max(0, doctor.totalTokens - doctor.currentToken)}</strong>
+                </div>
+              </div>
+
+              <div class="space-y-2.5">
+                <button onclick="advanceToken('${escapeHtml(doctor.id)}', 1)" class="w-full py-3.5 px-4 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-base shadow-sm transition">
+                  +1 Next Patient
+                </button>
+                <div class="grid grid-cols-2 gap-2">
+                  <button onclick="advanceToken('${escapeHtml(doctor.id)}', -1)" class="py-2.5 px-3 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold transition">
+                    -1 Previous
+                  </button>
+                  <button onclick="issueWalkInToken('${escapeHtml(doctor.id)}')" class="py-2.5 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold transition">
+                    + Issue Token (#${doctor.totalTokens + 1})
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-5">
+              <div>
+                <label class="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-2">Clinic Availability Status</label>
+                <div class="grid grid-cols-3 gap-2">
+                  <button onclick="setDoctorStatus('${escapeHtml(doctor.id)}', 'open')"
+                    class="py-2 px-2 rounded-xl text-xs font-semibold border transition ${doctor.status === 'open' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'}">
+                    Open
+                  </button>
+                  <button onclick="setDoctorStatus('${escapeHtml(doctor.id)}', 'break')"
+                    class="py-2 px-2 rounded-xl text-xs font-semibold border transition ${doctor.status === 'break' ? 'bg-amber-500 text-white border-amber-500' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'}">
+                    On Break
+                  </button>
+                  <button onclick="setDoctorStatus('${escapeHtml(doctor.id)}', 'closed')"
+                    class="py-2 px-2 rounded-xl text-xs font-semibold border transition ${doctor.status === 'closed' ? 'bg-rose-600 text-white border-rose-600' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'}">
+                    Closed
+                  </button>
+                </div>
+              </div>
+
+              ${doctor.status === 'break' ? `
+                <div>
+                  <label class="block text-xs font-semibold text-amber-800 mb-1">Break Buffer Added to ETA (mins)</label>
+                  <input type="number" min="0" max="120" value="${doctor.breakDelayMins || 0}"
+                    onchange="updateDoctorSetting('${escapeHtml(doctor.id)}', 'breakDelayMins', Number(this.value))"
+                    class="w-full rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900" />
+                </div>
+              ` : ''}
+
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-xs font-semibold text-slate-600 mb-1">Baseline Mins (1st 5)</label>
+                  <input type="number" min="1" max="60" value="${doctor.avgMins}"
+                    onchange="updateDoctorSetting('${escapeHtml(doctor.id)}', 'avgMins', Math.max(1, Number(this.value)))"
+                    class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold" />
+                </div>
+                <div>
+                  <label class="block text-xs font-semibold text-slate-600 mb-1">Total Tokens Issued</label>
+                  <input type="number" min="0" max="500" value="${doctor.totalTokens}"
+                    onchange="updateDoctorSetting('${escapeHtml(doctor.id)}', 'totalTokens', Math.max(0, Number(this.value)))"
+                    class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold" />
+                </div>
+              </div>
+
+              <div class="p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-600 space-y-2">
+                <div class="flex items-center justify-between">
+                  <span>Patients Completed:</span>
+                  <strong class="text-slate-900">${avgInfo.patientsSeen}</strong>
+                </div>
+                <div class="flex items-center justify-between">
+                  <span>Active Pace Mode:</span>
+                  <strong class="text-teal-700">${avgInfo.mode === 'live' ? `Live (${avgInfo.effectiveMins}m/pt)` : `Standard (${avgInfo.effectiveMins}m/pt)`}</strong>
+                </div>
+                <div class="pt-1 flex items-center justify-between gap-2">
+                  <button onclick="simulateElapsedSession('${escapeHtml(doctor.id)}', 45)" class="text-[11px] font-semibold text-teal-700 hover:underline">
+                    ⏱ Simulate 45m Elapsed
+                  </button>
+                  <button onclick="resetDoctorQueue('${escapeHtml(doctor.id)}')" class="text-[11px] font-semibold text-rose-600 hover:underline">
+                    Reset Queue
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="bg-white rounded-2xl border border-slate-200 p-5 sm:p-6 shadow-sm flex flex-col sm:flex-row items-center gap-5">
+            <img src="${qrUrl}" alt="Doctor Queue QR Code" class="w-28 h-28 rounded-xl border border-slate-200 p-1 bg-white shrink-0" />
+            <div class="flex-1 text-center sm:text-left">
+              <div class="text-xs font-bold uppercase tracking-wider text-teal-600">Isolated Patient Queue Link</div>
+              <h3 class="font-bold text-slate-900 text-base mt-0.5">Print or Share for ${escapeHtml(doctor.name)}'s Patients</h3>
+              <p class="text-xs text-slate-500 mt-1">Patients scanning this QR code will only see ${escapeHtml(doctor.name)}'s queue.</p>
+              <div class="mt-3 flex flex-wrap items-center gap-2">
+                <input type="text" readonly value="${escapeHtml(shareUrl)}" class="flex-1 min-w-[200px] text-xs bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 text-slate-600" />
+                <button onclick="copyText('${escapeHtml(shareUrl)}', 'Patient QR link copied!')" class="px-3.5 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold">
+                  Copy Link
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function advanceToken(doctorId, delta) {
+      const doc = appState.doctors.find(d => d.id === doctorId);
       if (!doc) return;
-      doc.currentToken = Math.max(0, doc.currentToken + delta);
-      if (doc.currentToken > doc.totalTokens) doc.totalTokens = doc.currentToken;
-      if (!doc.sessionStartedAt && doc.currentToken > 0) doc.sessionStartedAt = Date.now();
-      await saveState(window.appState);
-      showToast(`Token #${doc.currentToken}`);
-    };
 
+      const nextVal = Math.max(0, doc.currentToken + delta);
+      if (doc.currentToken === 0 && nextVal >= 1 && !doc.sessionStartedAt) {
+        doc.sessionStartedAt = Date.now();
+        doc.totalPausedMs = 0;
+      }
+      doc.currentToken = nextVal;
+      if (doc.currentToken > doc.totalTokens) {
+        doc.totalTokens = doc.currentToken;
+      }
+      saveState(appState);
+      showToast(`Now serving Token #${doc.currentToken}`);
+      render();
+    }
 
-    window.issueWalkInToken = async function(doctorId) {
-      const doc = window.appState.doctors.find(d => d.id === doctorId);
+    function issueWalkInToken(doctorId) {
+      const doc = appState.doctors.find(d => d.id === doctorId);
       if (!doc) return;
       doc.totalTokens += 1;
-      await saveState(window.appState);
+      saveState(appState);
       showToast(`Issued Token #${doc.totalTokens}`);
-    };
+      render();
+    }
 
+    function setDoctorStatus(doctorId, newStatus) {
+      const doc = appState.doctors.find(d => d.id === doctorId);
+      if (!doc || doc.status === newStatus) return;
 
-    window.setDoctorStatus = async function(doctorId, status) {
-      const doc = window.appState.doctors.find(d => d.id === doctorId);
+      if (newStatus === 'break') {
+        doc.pausedAt = Date.now();
+        if (!doc.breakDelayMins) doc.breakDelayMins = 15;
+      } else if (doc.status === 'break' && doc.pausedAt) {
+        doc.totalPausedMs = (doc.totalPausedMs || 0) + (Date.now() - doc.pausedAt);
+        doc.pausedAt = null;
+      }
+
+      if (newStatus === 'open' && !doc.sessionStartedAt) {
+        doc.sessionStartedAt = Date.now();
+      }
+
+      doc.status = newStatus;
+      saveState(appState);
+      showToast(`Status set to ${newStatus.toUpperCase()}`);
+      render();
+    }
+
+    function updateDoctorSetting(doctorId, field, value) {
+      const doc = appState.doctors.find(d => d.id === doctorId);
       if (!doc) return;
-      doc.status = status;
-      await saveState(window.appState);
-      showToast(`Status: ${status}`);
-    };
+      doc[field] = value;
+      saveState(appState);
+      showToast('Queue settings updated');
+      render();
+    }
 
+    function simulateElapsedSession(doctorId, mins) {
+      const doc = appState.doctors.find(d => d.id === doctorId);
+      if (!doc) return;
+      doc.sessionStartedAt = Date.now() - (mins * 60000);
+      doc.totalPausedMs = 0;
+      saveState(appState);
+      showToast(`Simulated ${mins} mins elapsed session time`);
+      render();
+    }
 
-    window.resetQueue = async function(doctorId) {
-      const doc = window.appState.doctors.find(d => d.id === doctorId);
+    function resetDoctorQueue(doctorId) {
+      const doc = appState.doctors.find(d => d.id === doctorId);
       if (!doc) return;
       doc.currentToken = 0;
       doc.totalTokens = 0;
       doc.sessionStartedAt = null;
-      await saveState(window.appState);
-      showToast('Queue reset');
-    };
+      doc.pausedAt = null;
+      doc.totalPausedMs = 0;
+      doc.breakDelayMins = 0;
+      doc.status = 'open';
+      saveState(appState);
+      showToast('Queue reset to #0 for new session');
+      render();
+    }
 
+    // =========================================================
+    // 10. VIEW E: ADMIN DASHBOARD
+    // =========================================================
+    function renderAdminDashboard() {
+      const doctorRows = appState.doctors.map(doc => {
+        const shareUrl = getDoctorShareUrl(doc.id);
+        const isEditing = editingDoctorId === doc.id;
 
-    // --- Master Render Function ---
-    window.render = function() {
-      if (!window.appState) return;
+        if (isEditing) {
+          return `
+            <tr class="bg-teal-50/40 border-b border-slate-200">
+              <td colspan="4" class="p-4">
+                <form onsubmit="saveDoctorEdit(event, '${escapeHtml(doc.id)}')" class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div>
+                    <label class="block text-[11px] font-semibold text-slate-600 mb-1">Doctor Name</label>
+                    <input name="name" type="text" required value="${escapeHtml(doc.name)}" class="w-full rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs" />
+                  </div>
+                  <div>
+                    <label class="block text-[11px] font-semibold text-slate-600 mb-1">Specialty</label>
+                    <input name="specialty" type="text" required value="${escapeHtml(doc.specialty)}" class="w-full rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs" />
+                  </div>
+                  <div>
+                    <label class="block text-[11px] font-semibold text-slate-600 mb-1">Room / Cabin</label>
+                    <input name="room" type="text" required value="${escapeHtml(doc.room)}" class="w-full rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs" />
+                  </div>
+                  <div>
+                    <label class="block text-[11px] font-semibold text-slate-600 mb-1">Login Username</label>
+                    <input name="username" type="text" required value="${escapeHtml(doc.username)}" class="w-full rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs" />
+                  </div>
+                  <div>
+                    <label class="block text-[11px] font-semibold text-slate-600 mb-1">Login Password</label>
+                    <input name="password" type="text" required value="${escapeHtml(doc.password)}" class="w-full rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs" />
+                  </div>
+                  <div>
+                    <label class="block text-[11px] font-semibold text-slate-600 mb-1">Baseline Mins</label>
+                    <input name="avgMins" type="number" min="1" max="60" required value="${doc.avgMins}" class="w-full rounded-lg border border-slate-300 px-2.5 py-1.5 text-xs" />
+                  </div>
+                  <div class="sm:col-span-3 flex justify-end gap-2 pt-1">
+                    <button type="button" onclick="setEditingDoctor(null)" class="px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-semibold text-slate-600">Cancel</button>
+                    <button type="submit" class="px-4 py-1.5 rounded-lg bg-teal-600 text-white text-xs font-semibold">Save Changes</button>
+                  </div>
+                </form>
+              </td>
+            </tr>
+          `;
+        }
+
+        return `
+          <tr class="border-b border-slate-100 hover:bg-slate-50">
+            <td class="px-4 py-3.5">
+              <div class="font-bold text-slate-900 text-sm">${escapeHtml(doc.name)}</div>
+              <div class="text-xs text-slate-500">${escapeHtml(doc.specialty)} • ${escapeHtml(doc.room)}</div>
+            </td>
+            <td class="px-4 py-3.5 text-xs">
+              <div>User: <code class="bg-slate-100 px-1.5 py-0.5 rounded font-semibold">${escapeHtml(doc.username)}</code></div>
+              <div class="mt-1">Pass: <code class="bg-slate-100 px-1.5 py-0.5 rounded font-semibold">${escapeHtml(doc.password)}</code></div>
+            </td>
+            <td class="px-4 py-3.5 text-xs">
+              <code class="text-teal-700 bg-teal-50 px-2 py-1 rounded font-medium">?doctor=${escapeHtml(doc.id)}</code>
+              <div class="mt-1.5 flex gap-2">
+                <button onclick="copyText('${escapeHtml(shareUrl)}', 'Copied URL for ${escapeHtml(doc.name)}')" class="text-slate-600 hover:text-slate-900 underline font-medium">Copy URL</button>
+                <button onclick="navigateToDoctor('${escapeHtml(doc.id)}')" class="text-teal-600 hover:text-teal-800 underline font-medium">Open ↗</button>
+              </div>
+            </td>
+            <td class="px-4 py-3.5 text-right text-xs space-x-1.5">
+              <button onclick="setEditingDoctor('${escapeHtml(doc.id)}')" class="px-2.5 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-100 font-semibold text-slate-700">
+                Edit
+              </button>
+              <button onclick="removeDoctor('${escapeHtml(doc.id)}')" class="px-2.5 py-1.5 rounded-lg border border-rose-200 hover:bg-rose-50 font-semibold text-rose-600">
+                Remove
+              </button>
+            </td>
+          </tr>
+        `;
+      }).join('');
+
+      return `
+        <div class="space-y-6">
+          <div>
+            <span class="text-xs font-bold uppercase tracking-wider text-amber-600">Master Control</span>
+            <h1 class="text-2xl font-extrabold text-slate-900">Clinic Admin Dashboard</h1>
+            <p class="text-xs text-slate-500 mt-0.5">Manage doctors, isolated queue URLs, staff logins, and admin security credentials.</p>
+          </div>
+
+          <div class="bg-white rounded-2xl border border-slate-200 p-5 sm:p-6 shadow-sm">
+            <h2 class="text-base font-bold text-slate-900 mb-4">+ Add New Doctor & Isolated Queue</h2>
+            <form onsubmit="handleAddDoctor(event)" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div>
+                <label class="block text-xs font-semibold text-slate-600 mb-1">Doctor Full Name</label>
+                <input id="newDocName" type="text" required placeholder="e.g. Dr. S. Das" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-slate-600 mb-1">Specialty</label>
+                <input id="newDocSpec" type="text" required placeholder="e.g. Dermatologist" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-slate-600 mb-1">Room / Cabin</label>
+                <input id="newDocRoom" type="text" required placeholder="e.g. Room 105" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-slate-600 mb-1">URL Slug & Username</label>
+                <input id="newDocUser" type="text" required placeholder="e.g. das (no spaces)" pattern="[a-zA-Z0-9_-]+" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-slate-600 mb-1">Receptionist Password</label>
+                <input id="newDocPass" type="text" required placeholder="e.g. das123" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-slate-600 mb-1">Baseline Mins / Patient</label>
+                <input id="newDocAvg" type="number" min="1" max="60" value="10" required class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
+              </div>
+              <div class="sm:col-span-2 lg:col-span-3 flex justify-end">
+                <button type="submit" class="px-5 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-sm font-semibold shadow-sm transition">
+                  Create Doctor Queue
+                </button>
+              </div>
+            </form>
+          </div>
+
+          <div class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+            <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+              <h2 class="text-base font-bold text-slate-900">Configured Doctors (${appState.doctors.length})</h2>
+            </div>
+            <div class="overflow-x-auto">
+              <table class="w-full text-left border-collapse">
+                <thead>
+                  <tr class="bg-slate-50 border-b border-slate-200 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                    <th class="px-4 py-3">Doctor & Room</th>
+                    <th class="px-4 py-3">Staff Credentials</th>
+                    <th class="px-4 py-3">Isolated Patient URL</th>
+                    <th class="px-4 py-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${doctorRows || '<tr><td colspan="4" class="px-4 py-8 text-center text-sm text-slate-500">No doctors added yet.</td></tr>'}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="bg-white rounded-2xl border border-slate-200 p-5 sm:p-6 shadow-sm">
+            <h2 class="text-base font-bold text-slate-900 mb-3">Update Clinic Admin Credentials</h2>
+            <form onsubmit="handleUpdateAdminCreds(event)" class="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
+              <div>
+                <label class="block text-xs font-semibold text-slate-600 mb-1">Admin Username</label>
+                <input id="adminUserField" type="text" required value="${escapeHtml(appState.admin.username)}" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-slate-600 mb-1">Admin Password</label>
+                <input id="adminPassField" type="text" required value="${escapeHtml(appState.admin.password)}" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
+              </div>
+              <div>
+                <button type="submit" class="w-full py-2 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-sm font-semibold transition">
+                  Update Admin Login
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      `;
+    }
+
+    function setEditingDoctor(id) {
+      editingDoctorId = id;
+      render();
+    }
+
+    function saveDoctorEdit(e, id) {
+      e.preventDefault();
+      const doc = appState.doctors.find(d => d.id === id);
+      if (!doc) return;
+      const fd = new FormData(e.target);
+      doc.name = fd.get('name').trim();
+      doc.specialty = fd.get('specialty').trim();
+      doc.room = fd.get('room').trim();
+      doc.username = fd.get('username').trim();
+      doc.password = fd.get('password');
+      doc.avgMins = Math.max(1, Number(fd.get('avgMins')));
+      editingDoctorId = null;
+      saveState(appState);
+      showToast('Doctor details updated');
+      render();
+    }
+
+    function handleAddDoctor(e) {
+      e.preventDefault();
+      const name = document.getElementById('newDocName').value.trim();
+      const specialty = document.getElementById('newDocSpec').value.trim();
+      const room = document.getElementById('newDocRoom').value.trim();
+      const username = document.getElementById('newDocUser').value.trim().toLowerCase();
+      const password = document.getElementById('newDocPass').value;
+      const avgMins = Math.max(1, Number(document.getElementById('newDocAvg').value));
+
+      if (appState.doctors.some(d => d.id === username || d.username === username)) {
+        showToast('Username / URL slug already exists!', true);
+        return;
+      }
+
+      appState.doctors.push({
+        id: username,
+        name,
+        specialty,
+        room,
+        username,
+        password,
+        avgMins,
+        currentToken: 0,
+        totalTokens: 0,
+        status: 'open',
+        breakDelayMins: 0,
+        sessionStartedAt: null,
+        pausedAt: null,
+        totalPausedMs: 0
+      });
+
+      saveState(appState);
+      showToast(`Added ${name} (?doctor=${username})`);
+      render();
+    }
+
+    function removeDoctor(id) {
+      appState.doctors = appState.doctors.filter(d => d.id !== id);
+      saveState(appState);
+      showToast('Doctor removed');
+      render();
+    }
+
+    function handleUpdateAdminCreds(e) {
+      e.preventDefault();
+      appState.admin.username = document.getElementById('adminUserField').value.trim();
+      appState.admin.password = document.getElementById('adminPassField').value;
+      saveState(appState);
+      showToast('Admin credentials updated');
+      render();
+    }
+
+    // =========================================================
+    // 11. MAIN RENDER LOOP
+    // =========================================================
+    function render() {
       renderNav();
       const root = document.getElementById('appRoot');
       const session = getAuthSession();
 
+      if (currentView === 'login') {
+        root.innerHTML = renderLoginView();
+        return;
+      }
 
-      if (window.currentView === 'login') { root.innerHTML = renderLoginView(); return; }
-      if (window.currentView === 'dashboard' && session) {
+      if (currentView === 'dashboard' && session) {
         if (session.role === 'admin') {
-          root.innerHTML = `<div class="text-center py-10 font-bold">Admin Dashboard Active</div>`;
+          root.innerHTML = renderAdminDashboard();
         } else {
-          const doc = window.appState.doctors.find(d => d.id === session.doctorId);
+          const doc = appState.doctors.find(d => d.id === session.doctorId);
           root.innerHTML = renderDoctorControlPanel(doc);
         }
         return;
       }
 
-
-      const urlDocId = getDoctorIdFromUrl();
-      if (urlDocId) {
-        const doc = window.appState.doctors.find(d => d.id === urlDocId);
-        root.innerHTML = doc ? renderPatientDoctorView(doc) : `<div class="text-center py-12">Doctor not found</div>`;
+      const urlDoctorId = getDoctorIdFromUrl();
+      if (urlDoctorId) {
+        const doctor = appState.doctors.find(d => d.id === urlDoctorId);
+        if (doctor) {
+          root.innerHTML = renderPatientDoctorView(doctor);
+        } else {
+          root.innerHTML = `
+            <div class="max-w-md mx-auto bg-white rounded-2xl border border-slate-200 p-8 text-center">
+              <h2 class="text-lg font-bold text-slate-900">Doctor Queue Not Found</h2>
+              <p class="text-sm text-slate-500 mt-1">No active queue matches <code class="bg-slate-100 px-1.5 py-0.5 rounded">${escapeHtml(urlDoctorId)}</code>.</p>
+              <button onclick="navigateToRoot()" class="mt-4 px-4 py-2 rounded-xl bg-teal-600 text-white text-xs font-semibold">Go to Clinic Portal</button>
+            </div>`;
+        }
         return;
       }
 
-
-      if (session && window.currentView === 'auto') { window.currentView = 'dashboard'; render(); return; }
-      root.innerHTML = renderRootPortal();
-    };
-
-
-    // =========================================================
-    // REAL-TIME FIRESTORE LISTENER (SYNC ACROSS DEVICES)
-    // =========================================================
-    onSnapshot(STATE_DOC_REF, (docSnap) => {
-      if (docSnap.exists()) {
-        window.appState = docSnap.data();
-      } else {
-        // Initialize Firebase with default state if empty
-        setDoc(STATE_DOC_REF, DEFAULT_STATE);
-        window.appState = DEFAULT_STATE;
+      if (session && currentView === 'auto') {
+        currentView = 'dashboard';
+        render();
+        return;
       }
-      render();
-    }, (error) => {
-      console.error("Firestore sync error:", error);
-      document.getElementById('appRoot').innerHTML = `<div class="p-8 text-center text-rose-600 font-semibold">Firebase Connection Error. Please check your credentials in the script configuration.</div>`;
-    });
-  </script>
 
+      root.innerHTML = renderRootPortal();
+    }
+
+    setInterval(() => {
+      if (document.activeElement?.tagName !== 'INPUT') {
+        render();
+      }
+    }, 30000);
+
+    render();
+  </script>
 </body>
 </html>
